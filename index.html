@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Robot Character with Background Texture</title>
+    <style>
+        body {
+            margin: 0;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.9.1/gsap.min.js"></script>
+
+    <script>
+        // Setup scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Robot body
+        const bodyGeometry = new THREE.BoxGeometry(1, 2, 1);
+        const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x4488ff });
+        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+        scene.add(body);
+
+        // Robot head
+        const headGeometry = new THREE.SphereGeometry(0.5, 32, 32);
+        const headMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+        const head = new THREE.Mesh(headGeometry, headMaterial);
+        head.position.y = 1.5;
+        body.add(head); // Attach head to the body
+
+        // Robot arms
+        const armGeometry = new THREE.BoxGeometry(0.2, 1.5, 0.2);
+        const armMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+        const rightArm = new THREE.Mesh(armGeometry, armMaterial);
+        rightArm.position.set(0.6, 0.5, 0);
+        const leftArm = new THREE.Mesh(armGeometry, armMaterial);
+        leftArm.position.set(-0.6, 0.5, 0);
+        body.add(rightArm, leftArm); // Attach arms to the body
+
+        // Robot legs
+        const legGeometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 32);
+        const legMaterial = new THREE.MeshStandardMaterial({ color: 0xffff00 });
+        const rightLeg = new THREE.Mesh(legGeometry, legMaterial);
+        rightLeg.position.set(0.3, -1, 0);
+        rightLeg.rotation.z = Math.PI / 2;
+        const leftLeg = new THREE.Mesh(legGeometry, legMaterial);
+        leftLeg.position.set(-0.3, -1, 0);
+        leftLeg.rotation.z = Math.PI / 2;
+        body.add(rightLeg, leftLeg); // Attach legs to the body
+
+        // Floor with image texture
+        const floorGeometry = new THREE.BoxGeometry(100, 100);
+        const loader = new THREE.TextureLoader();
+        const floorTexture = loader.load('assets/floor.png'); // Load your floor texture image
+        floorTexture.wrapS = THREE.RepeatWrapping;
+        floorTexture.wrapT = THREE.RepeatWrapping;
+        floorTexture.repeat.set(5, 5); // Adjust the repeat value to control the tiling
+        const floorMaterial = new THREE.MeshStandardMaterial({ map: floorTexture, side: THREE.DoubleSide });
+        const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+        floor.rotation.x = Math.PI / 2; // Rotate the floor to be horizontal
+        floor.position.y = -2; // Adjust the position to be below the robot
+        scene.add(floor);
+
+        // Add rocks as obstacles
+        const rockGeometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+        const rockMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 });
+        const rocks = [];
+        const numRocks = 3;
+        for (let i = 0; i < numRocks; i++) {
+            const rock = new THREE.Mesh(rockGeometry, rockMaterial);
+            const randomX = Math.random() * 10 - 5; // Random X position within the floor area
+            const randomZ = Math.random() * 10 - 5; // Random Z position within the floor area
+            rock.position.set(randomX, -1.3, randomZ); // Place the rock slightly above the floor
+            scene.add(rock);
+            rocks.push(rock);
+        }
+
+        // Add lighting to the scene
+        let lightColorIndex = 0;
+        const lightColors = [0xffffff, 0xff0000, 0x00ff00, 0x0000ff]; // Red, Green, Blue
+
+        let ambientLight = new THREE.AmbientLight(lightColors[lightColorIndex], 0.5);
+        scene.add(ambientLight);
+
+        let directionalLight = new THREE.DirectionalLight(lightColors[lightColorIndex], 0.5);
+        directionalLight.position.set(1, 1, 1).normalize();
+        scene.add(directionalLight);
+
+        // Second light source
+        const dimLight = new THREE.DirectionalLight(0xffffff, 0.5); // Very dim
+        dimLight.position.set(-1, 1, 1).normalize();
+        scene.add(dimLight);
+
+        // Background texture
+        const backgroundTexture = loader.load('assets/blue.png');
+        backgroundTexture.wrapS = THREE.RepeatWrapping;
+        backgroundTexture.wrapT = THREE.RepeatWrapping;
+        backgroundTexture.repeat.set(10, 10); // Adjust the repeat value to control the tiling
+        backgroundTexture.minFilter = THREE.LinearFilter; // Set minFilter to LinearFilter for smoother scaling
+        scene.background = backgroundTexture;
+
+        // Set starting position of the camera further back
+        camera.position.y = 5
+        camera.position.z = 20;
+
+        // Robot movement controls
+        const moveDistance = 0.1;
+
+        let upDown = true;
+
+        const onKeyDown = (event) => {
+            switch (event.code) {
+                case 'ArrowUp':
+                    if (!checkCollision(body, rocks, 0, -moveDistance)) {
+                        body.position.z -= moveDistance;
+
+                        if (!upDown) {
+                            upDown = true;
+                            body.rotation.y += Math.PI / 2;
+                        }
+
+                        animateRobot();
+                        animateSphere();
+                    }
+                    break;
+                case 'ArrowDown':
+                    if (!checkCollision(body, rocks, 0, moveDistance)) {
+                        body.position.z += moveDistance;
+
+                        if (!upDown) {
+                            upDown = true;
+                            body.rotation.y += Math.PI / 2;
+                        }
+
+                        animateRobot();
+                        animateSphere();
+                    }
+                    break;
+                case 'ArrowLeft':
+                    if (!checkCollision(body, rocks, -moveDistance, 0)) {
+                        body.position.x -= moveDistance;
+
+                        if (upDown) {
+                            upDown = false;
+                            body.rotation.y += Math.PI / 2;
+                        }
+
+                        animateRobot();
+                        animateSphere();
+                    }
+                    break;
+                case 'ArrowRight':
+                    if (!checkCollision(body, rocks, moveDistance, 0)) {
+                        body.position.x += moveDistance;
+
+                        if (upDown) {
+                            upDown = false;
+                            body.rotation.y += Math.PI / 2;
+                        }
+
+                        animateRobot();
+                        animateSphere();
+                    }
+                    break;
+                case 'KeyL':
+                    toggleLight();
+                    break;
+                case 'KeyC':
+                    changeLightColor();
+                    break;
+            }
+        };
+
+        const cameraPivot = new THREE.Object3D();
+        scene.add(cameraPivot);
+        cameraPivot.add(camera);
+
+        // Mouse variables
+        let isDragging = false;
+        let previousMousePosition = {
+            x: 0,
+            y: 0
+        };
+
+        // Function to handle mouse down event
+        function onMouseDown(event) {
+            isDragging = true;
+            previousMousePosition = {
+                x: event.clientX,
+                y: event.clientY
+            };
+        }
+
+        // Function to handle mouse move event
+        function onMouseMove(event) {
+            if (isDragging) {
+                const deltaMove = {
+                    x: previousMousePosition.x - event.clientX,
+                    y: previousMousePosition.y - event.clientY
+                };
+
+                const theta = deltaMove.x * 0.01;
+                const phi = deltaMove.y * 0.0001;
+
+                cameraPivot.rotateY(theta);
+                cameraPivot.rotateX(phi);
+
+                previousMousePosition = {
+                    x: event.clientX,
+                    y: event.clientY
+                };
+            }
+        }
+
+        // Function to handle mouse up event
+        function onMouseUp(event) {
+            isDragging = false;
+        }
+
+        // Add event listeners
+        document.addEventListener('mousedown', onMouseDown);
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+
+        document.addEventListener('keydown', onKeyDown);
+
+        // Function to toggle light
+        let lightOn = true;
+        function toggleLight() {
+            lightOn = !lightOn;
+            ambientLight.visible = lightOn;
+            directionalLight.visible = lightOn;
+
+            if (!lightOn) {
+                const nightTexture = loader.load('assets/night.jpg');
+                nightTexture.wrapS = THREE.RepeatWrapping;
+                nightTexture.wrapT = THREE.RepeatWrapping;
+                nightTexture.repeat.set(10, 10); // Adjust the repeat value to control the tiling
+                nightTexture.minFilter = THREE.LinearFilter; // Set minFilter to LinearFilter for smoother scaling
+                scene.background = nightTexture;
+
+            } else {
+                scene.background = backgroundTexture; // Revert to the original background texture
+            }
+        }
+
+        // Variables for jump animation
+        let isJumping = false;
+        const jumpHeight = 2;
+        const jumpDuration = 0.5;
+        let jumpTween = null;
+
+        // Function to handle key press events
+        const onKeyPress = (event) => {
+            switch (event.code) {
+                case 'Space':
+                    if (!isJumping) {
+                        jump();
+                    }
+                    break;
+            }
+        };
+
+        // Add event listener for key press
+        document.addEventListener('keydown', onKeyPress);
+
+        // Function to handle the jump animation
+        function jump() {
+            isJumping = true;
+            jumpTween = gsap.to(body.position, {
+                y: body.position.y + jumpHeight,
+                duration: jumpDuration / 2,
+                ease: 'power1.inOut',
+                yoyo: true,
+                repeat: 1,
+                onComplete: () => {
+                    isJumping = false;
+                }
+            });
+        }
+
+        // Function to change light color
+        function changeLightColor() {
+            lightColorIndex = (lightColorIndex + 1) % lightColors.length;
+            ambientLight.color.set(lightColors[lightColorIndex]);
+            directionalLight.color.set(lightColors[lightColorIndex]);
+        }
+
+        const animateRobot = () => {
+            // body.rotation.y += 0.05;
+            rightArm.rotation.x += 0.2;
+            leftArm.rotation.x -= 0.2;
+            rightLeg.rotation.x -= 0.2;
+            leftLeg.rotation.x += 0.2;
+        }
+
+        // Add a rotating sphere around the robot
+        const sphereGeometry = new THREE.SphereGeometry(0.4, 20, 20);
+        const sphereMaterial = new THREE.MeshStandardMaterial({ color: 0xffff00 });
+        const rotatingSphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+        scene.add(rotatingSphere);
+
+        // Function to animate the rotating sphere
+        const animateSphere = () => {
+            // Move the sphere around the robot in a circular motion
+            const radius = 2; // Adjust the radius of the circular motion
+            const angle = Date.now() * 0.001; // Adjust the speed of rotation
+
+            const x = body.position.x + Math.cos(angle) * radius;
+            const z = body.position.z + Math.sin(angle) * radius;
+
+            rotatingSphere.position.set(x, 0, z);
+            rotatingSphere.rotation.y += 0.06; // Adjust the rotation speed as needed
+        }
+
+        // Function to check collision between robot and rocks
+        function checkCollision(robot, obstacles, deltaX, deltaZ) {
+            const robotBox = new THREE.Box3().setFromObject(robot);
+            const futureBox = robotBox.clone();
+            futureBox.translate(new THREE.Vector3(deltaX, 0, deltaZ));
+
+            for (let i = 0; i < obstacles.length; i++) {
+                const obstacleBox = new THREE.Box3().setFromObject(obstacles[i]);
+                if (futureBox.intersectsBox(obstacleBox)) {
+                    return true; // Collision detected
+                }
+            }
+
+            return false; // No collision detected
+        }
+
+        // Animation
+        const animate = () => {
+            requestAnimationFrame(animate);
+            animateRobot();
+            animateSphere();
+            renderer.render(scene, camera);
+        };
+
+        animate();
+    </script>
+</body>
+
+</html>
